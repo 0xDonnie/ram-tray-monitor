@@ -73,6 +73,7 @@ namespace ClaudeRamTray {
     public DateTime RinviaFino = DateTime.MinValue;
     Timer killRitardato;
     string daUccidere = null;
+    bool manuale = false;   // aperto a mano dall'utente: non si chiude da solo
 
     protected override bool ShowWithoutActivation { get { return true; } }
 
@@ -130,6 +131,9 @@ namespace ClaudeRamTray {
       refresh.Interval = 2000;
       refresh.Tick += delegate { Ridisegna(); };
 
+      // Chiuso in qualunque modo, la prossima apertura riparte da zero.
+      VisibleChanged += delegate { if (!Visible) { manuale = false; refresh.Stop(); } };
+
       killRitardato = new Timer();
       killRitardato.Interval = 3000;
       killRitardato.Tick += delegate {
@@ -160,7 +164,11 @@ namespace ClaudeRamTray {
       return b;
     }
 
-    public void Apri(int pct, long liberiMB, long crollo) {
+    public void Apri(int pct, long liberiMB, long crollo) { Apri(pct, liberiMB, crollo, false); }
+
+    public void Apri(int pct, long liberiMB, long crollo, bool aMano) {
+      manuale = aMano;
+      Text = aMano ? "Memoria - stato attuale" : "RAM quasi esaurita";
       Rectangle wa = Screen.PrimaryScreen.WorkingArea;
       Location = new Point(wa.Right - Width - 16, wa.Bottom - Height - 16);
       Aggiorna(pct, liberiMB, crollo);
@@ -172,10 +180,13 @@ namespace ClaudeRamTray {
 
     void Aggiorna(int pct, long liberiMB, long crollo) {
       string t = "RAM al " + pct + "%   -   " + liberiMB + " MB liberi";
-      if (crollo >= 300) t += "\n" + crollo + " MB spariti negli ultimi secondi";
-      else t += "\nChiudi qualcosa prima che si pianti";
+      if (crollo >= 300)        t += "\n" + crollo + " MB spariti negli ultimi secondi";
+      else if (liberiMB > 1500) t += "\nSituazione normale";
+      else                      t += "\nChiudi qualcosa prima che si pianti";
       testa.Text = t;
-      testa.BackColor = liberiMB < 600 ? Color.FromArgb(180, 30, 30) : Color.FromArgb(190, 115, 0);
+      if (liberiMB < 600)       testa.BackColor = Color.FromArgb(180, 30, 30);
+      else if (liberiMB <= 1500) testa.BackColor = Color.FromArgb(190, 115, 0);
+      else                      testa.BackColor = Color.FromArgb(45, 90, 135);
       Riempi();
     }
 
@@ -200,7 +211,9 @@ namespace ClaudeRamTray {
       MEMORYSTATUSEX s = Mem.Stato();
       long liberi = (long)(s.ullAvailPhys / 1048576L);
       Aggiorna((int)s.dwMemoryLoad, liberi, 0);
-      if (liberi > 1500) { refresh.Stop(); Hide(); }
+      // Il rientro automatico vale solo per il pannello aperto dall'allarme.
+      // Se l'ha aperto l'utente resta li' finche' non lo chiude lui.
+      if (liberi > 1500 && !manuale) { refresh.Stop(); Hide(); }
     }
 
     void Termina() {
@@ -291,7 +304,7 @@ namespace ClaudeRamTray {
 
     void ApriPannello(bool forzato) {
       MEMORYSTATUSEX s = Mem.Stato();
-      pannello.Apri((int)s.dwMemoryLoad, (long)(s.ullAvailPhys / 1048576L), 0);
+      pannello.Apri((int)s.dwMemoryLoad, (long)(s.ullAvailPhys / 1048576L), 0, forzato);
     }
 
     bool InAvvio() {
