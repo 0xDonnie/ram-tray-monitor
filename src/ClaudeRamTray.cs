@@ -375,19 +375,28 @@ namespace ClaudeRamTray {
       pannello.Apri((int)s.dwMemoryLoad, (long)(s.ullAvailPhys / 1048576L), 0, forzato);
     }
 
-    // A ogni avvio il programma si riscrive nell'avvio automatico di Windows,
-    // e ci mette il percorso da cui sta girando adesso. Serve perche' il
-    // registro puntava all'eseguibile vecchio dopo che la cartella era stata
-    // spostata, e il monitor semplicemente non ripartiva piu' al riavvio del
-    // PC. Chi non lo vuole lo toglie dal menu: la voce resta.
+    // A ogni avvio il programma controlla di essere ancora nell'avvio
+    // automatico di Windows, e ci si rimette se la voce manca o se punta a un
+    // eseguibile che non esiste piu'. Serve perche' spostando la cartella il
+    // registro restava a puntare al percorso vecchio e al riavvio del PC il
+    // monitor non ripartiva, senza che niente lo segnalasse.
+    //
+    // Quello che NON deve fare e' riscrivere una voce che funziona: una copia
+    // di prova lanciata da un'altra cartella si prenderebbe l'avvio automatico
+    // al posto dell'installazione vera. E' successo davvero.
     void AllineaAvvio() {
       try {
         string mio = "\"" + Application.ExecutablePath + "\"";
         RegistryKey k = Registry.CurrentUser.OpenSubKey(RUNKEY, true);
         if (k == null) return;
         object v = k.GetValue("ClaudeRamTray");
-        string attuale = (v == null) ? null : v.ToString();
-        if (attuale != mio) k.SetValue("ClaudeRamTray", mio);
+        string attuale = (v == null) ? null : v.ToString().Trim();
+        bool daRifare = string.IsNullOrEmpty(attuale);
+        if (!daRifare && attuale != mio) {
+          string percorso = attuale.Trim('"');
+          daRifare = !File.Exists(percorso);   // punta a qualcosa che non c'e' piu'
+        }
+        if (daRifare) k.SetValue("ClaudeRamTray", mio);
         k.Close();
       } catch {}
     }
