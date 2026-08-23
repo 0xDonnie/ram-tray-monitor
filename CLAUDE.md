@@ -40,8 +40,11 @@ l'amministratore, si scarta o si rende opzionale.
 Il consumo del programma stesso deve restare basso: e' un monitor di memoria, sarebbe
 ridicolo se pesasse. Appena avviato WinForms si porta dietro una trentina di MB, quindi
 `Mem.Sgombera()` chiama `SetProcessWorkingSetSize(-1,-1)` al terzo tick e poi ogni
-cinque minuti, e ogni volta che il pannello si chiude: il working set scende a **4-6
-MB** e le pagine che servono davvero rientrano da sole. Non e' un trucco per far bella
+cinque minuti, e ogni volta che il pannello si chiude: il working set scende a 4 MB
+subito dopo l'avvio e **a regime oscilla fra 10 e 18 MB**, con il rientro visibile a
+ogni sgombero (misurato per sette minuti il 23/08/2026). Se un giorno lo si vedesse
+stare stabilmente sopra i 25 MB, il primo sospetto e' un handle o un `Bitmap` non
+liberato nel disegno dell'icona. Non e' un trucco per far bella
 figura col Gestione attivita', e' esattamente quello che il programma chiede di fare
 agli altri. Se un giorno si vedesse rallentare l'apertura del pannello, diradare lo
 sgombero, non toglierlo.

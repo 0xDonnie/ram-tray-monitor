@@ -85,10 +85,18 @@ contesto dell'utente che lo lancia.
 
 ## Quanto pesa
 
-Da 4 a 6 MB di memoria. WinForms ne pretende una trentina all'avvio, cosi' il programma
-restituisce a Windows le pagine che non sta usando appena finita la partenza, poi ogni
-cinque minuti e ogni volta che il pannello si chiude. Sarebbe stato ridicolo il
-contrario: un monitor di RAM che si tiene trenta MB per dirti che la RAM sta finendo.
+Da 10 a 18 MB a regime, 4 MB nei primi secondi dopo l'avvio. WinForms ne pretende una
+trentina appena parte, cosi' il programma restituisce a Windows le pagine che non sta
+usando: subito dopo la partenza, poi ogni cinque minuti, e ogni volta che il pannello si
+chiude. Misurato per sette minuti di fila, il rientro si vede a occhio nella serie:
+
+    20:03:43  16 MB
+    20:04:13  10 MB   <- sgombero
+    20:05:43  15 MB
+    20:08:43  18 MB
+
+Sarebbe stato ridicolo il contrario: un monitor di RAM che si tiene trenta MB per dirti
+che la RAM sta finendo.
 
 ## Struttura
 
