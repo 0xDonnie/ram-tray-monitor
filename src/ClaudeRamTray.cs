@@ -106,9 +106,11 @@ namespace ClaudeRamTray {
       lista.BackColor = Color.FromArgb(38, 38, 42);
       lista.ForeColor = Color.White;
       lista.BorderStyle = BorderStyle.None;
-      lista.Columns.Add("Processo", 210);
-      lista.Columns.Add("MB", 80, HorizontalAlignment.Right);
-      lista.Columns.Add("Processi", 80, HorizontalAlignment.Right);
+      lista.Columns.Add("Processo", 160);
+      lista.Columns.Add("MB", 62, HorizontalAlignment.Right);
+      lista.Columns.Add("GB", 58, HorizontalAlignment.Right);
+      lista.Columns.Add("% RAM", 52, HorizontalAlignment.Right);
+      lista.Columns.Add("Processi", 68, HorizontalAlignment.Right);
       lista.Location = new Point(10, 84);
       lista.Size = new Size(420, 240);
       lista.DoubleClick += delegate { Termina(); };
@@ -197,8 +199,17 @@ namespace ClaudeRamTray {
       return Color.White;
     }
 
+    // Le tre colonne numeriche di una riga: megabyte, gigabyte, quota sul
+    // totale della RAM installata.
+    static string[] Numeri(Voce v, long totaleMB) {
+      string gb = (v.MB / 1024.0).ToString("0.00");
+      string pc = (totaleMB > 0) ? (v.MB * 100.0 / totaleMB).ToString("0.0") : "-";
+      return new string[] { v.MB.ToString(), gb, pc, v.Quanti.ToString() };
+    }
+
     void Riempi() {
       List<Voce> voci = Mem.Classifica(12);
+      long totaleMB = (long)(Mem.Stato().ullTotalPhys / 1048576L);
 
       // Svuotare e ricostruire la lista a ogni giro riportava lo scorrimento
       // in cima dopo un secondo. Se i nomi sono gli stessi e nello stesso
@@ -214,10 +225,10 @@ namespace ClaudeRamTray {
       if (stessoOrdine) {
         for (int i = 0; i < voci.Count; i++) {
           ListViewItem it = lista.Items[i];
-          string mb = voci[i].MB.ToString();
-          string q  = voci[i].Quanti.ToString();
-          if (it.SubItems[1].Text != mb) it.SubItems[1].Text = mb;
-          if (it.SubItems[2].Text != q)  it.SubItems[2].Text = q;
+          string[] n = Numeri(voci[i], totaleMB);
+          for (int c = 0; c < n.Length; c++) {
+            if (it.SubItems[c + 1].Text != n[c]) it.SubItems[c + 1].Text = n[c];
+          }
           it.ForeColor = Colore(voci[i]);
         }
       } else {
@@ -227,8 +238,7 @@ namespace ClaudeRamTray {
         lista.Items.Clear();
         foreach (Voce v in voci) {
           ListViewItem it = new ListViewItem(v.Nome);
-          it.SubItems.Add(v.MB.ToString());
-          it.SubItems.Add(v.Quanti.ToString());
+          foreach (string s in Numeri(v, totaleMB)) it.SubItems.Add(s);
           it.ForeColor = Colore(v);
           lista.Items.Add(it);
           if (sel != null && v.Nome == sel) it.Selected = true;
