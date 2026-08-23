@@ -38,11 +38,14 @@ Deve continuare a **non richiedere l'elevazione**. Se una funzionalita' richiede
 l'amministratore, si scarta o si rende opzionale.
 
 Il consumo del programma stesso deve restare basso: e' un monitor di memoria, sarebbe
-ridicolo se pesasse. Sta sui 20-25 MB, tenerlo li'.
+ridicolo se pesasse. Misurato al 23/08/2026 sta sui **33-35 MB** di working set, il
+grosso dei quali e' il costo fisso di WinForms. Non deve crescere oltre; se cresce,
+il primo sospetto e' un handle o un `Bitmap` non liberato nel disegno dell'icona.
 
 ## Architettura
 
-Tre classi dentro il namespace `ClaudeRamTray`.
+Quattro classi dentro il namespace `ClaudeRamTray`, piu' `Voce`, che e' solo il record
+di una riga della classifica: nome, megabyte, quanti processi con quel nome.
 
 `Mem` e' la classe statica di utilita'. Legge la memoria con `GlobalMemoryStatusEx` via
 P/Invoke, che e' immediato e non costa niente, al contrario di WMI. `Mem.Classifica(n)`
@@ -63,6 +66,22 @@ all'override di `ShowWithoutActivation`. Ha un timer proprio da due secondi che 
 la lista mentre e' aperto, e si nasconde da solo quando si risale sopra 1,5 GB liberi.
 La chiusura con la X non distrugge la finestra, la nasconde: c'e' un handler su
 `FormClosing` che annulla e chiama `Hide()`, perche' la stessa istanza viene riusata.
+
+Il pannello ha due modi, distinti dal campo `manuale`, che vale `true` solo quando
+l'apertura viene dal doppio clic sull'icona o dalla voce di menu. **Il rientro
+automatico sopra 1,5 GB liberi vale solo per il modo allarme**: il pannello aperto a
+mano deve restare aperto, altrimenti sparisce due secondi dopo, che e' esattamente il
+difetto che aveva alla prima versione. Il campo si azzera da solo su `VisibleChanged`,
+cosi' non serve ricordarsi di resettarlo in ogni punto che chiama `Hide()`.
+
+`Riempi()` ha due rami. Se i nomi dei processi sono gli stessi e nello stesso ordine
+dell'ultimo giro, **aggiorna i testi delle colonne sul posto**; solo se la classifica
+cambia svuota e ricostruisce la `ListView`, e in quel caso prova a rimettere lo
+scorrimento sulla riga che stava in cima. Ricostruire sempre, come faceva la prima
+versione, riportava la barra di scorrimento in cima ogni due secondi mentre l'utente
+stava leggendo. I valori numerici delle colonne li produce il solo metodo
+`Numeri(Voce, totaleMB)`, usato da entrambi i rami: se si aggiunge una colonna si
+tocca solo quello e l'elenco di `Columns.Add`.
 
 ## Le soglie
 
@@ -127,8 +146,9 @@ storico degli allarmi leggibile dal pannello, visto che il CSV gia' c'e'.
 
 ## Contesto piu' ampio
 
-Questo programma e' nato dentro una diagnosi piu' grande sui blocchi di un portatile, che
-comprende anche una pista sull'alimentazione USB-C. La cronologia completa sta nei
-documenti di diagnosi privati, 
- Qui in `docs/perche-esiste.md` c'e' il sottoinsieme che
-riguarda la memoria.
+Questo programma e' nato dentro una diagnosi piu' grande sui blocchi di un portatile,
+che comprende anche una pista sull'alimentazione USB-C indipendente dalla memoria. In
+`docs/perche-esiste.md` c'e' il sottoinsieme che riguarda la RAM, che e' l'unica parte
+che questo programma affronta. Quando si valuta una modifica alle soglie, tenere
+presente che non tutti i blocchi osservati erano di memoria: attribuirgliene di piu' di
+quelli che gli spettano porta a rendere il programma isterico.

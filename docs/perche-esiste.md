@@ -2,8 +2,7 @@
 
 ## Il problema
 
-Portatile Windows 11 Pro, Core Ultra, **15,46 GB di RAM saldata e non espandibile**,
-Windows 11 Pro. Blocchi della sessione grafica di durata variabile, da venti secondi a
+Portatile Windows 11 Pro, Core Ultra, **15,46 GB di RAM saldata e non espandibile**. Blocchi della sessione grafica di durata variabile, da venti secondi a
 venti minuti, senza BSOD, senza crash del kernel, senza errori hardware.
 
 ## La misura
@@ -80,4 +79,6 @@ i picchi. I picchi li fanno ffmpeg e Windows Terminal.
 Esiste una seconda causa, indipendente, per i blocchi lunghi da venti minuti: perdite
 reali dell'alimentazione di rete documentate il 18/08 e il 21/08, con il portatile che
 passa a batteria per 8, 66 e 152 secondi senza che nessuno tocchi il cavo. Quella pista
-riguarda l'hub USB-C ed e' tracciata nei documenti di progetto, non qui.
+riguarda l'hub USB-C e non ha niente a che vedere con la memoria: se ne parla qui solo
+perche' i due fenomeni si sommano, e chi legge i numeri qui sopra deve sapere che non
+spiegano tutti i blocchi.

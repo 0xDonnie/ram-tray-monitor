@@ -1,12 +1,32 @@
 # ram-tray-monitor
 
-Indicatore di RAM nell'area di notifica di Windows, con pannello di allarme che si apre
-da solo quando la memoria sta per finire e permette di chiudere i processi colpevoli
-prima che la macchina si pianti.
+**Indicatore di RAM nell'area di notifica di Windows, con pannello di allarme che si
+apre da solo quando la memoria sta per finire e ti lascia chiudere il processo colpevole
+prima che la macchina si pianti.**
 
-Nato per il portatile (16 GB non espandibili), dove blocchi da venti secondi
-si sono rivelati causati da singoli processi che si prendono oltre un giga in dieci
-secondi. Il perche' delle soglie sta in `docs/perche-esiste.md`.
+Un file sorgente, nessuna dipendenza, nessun installer: si compila con il compilatore C#
+che sta gia' dentro Windows.
+
+> Windows tray RAM monitor with a pop-up alarm panel that lets you kill the offending
+> process before the machine freezes. Single C# source file, no SDK, no NuGet, builds
+> with the .NET Framework compiler already present on every Windows. Interface and
+> documentation are in Italian.
+
+## Perche' non e' il solito monitor di RAM
+
+Perche' non guarda la percentuale, guarda la **velocita'**.
+
+Due giorni di campionamento ogni trenta secondi, 5665 misure, hanno mostrato una cosa
+controintuitiva: quella macchina ha passato otto ore e mezza sopra il novanta per cento
+di RAM occupata senza un solo problema, e settantasei minuti di fila al novantanove per
+cento senza bloccarsi. Quando la memoria si consuma piano, Windows ha tutto il tempo di
+comprimere e paginare e non se ne accorge nessuno.
+
+A bloccare la macchina e' stato ogni volta un processo che si prendeva **oltre un giga in
+dieci secondi**. Per questo la soglia piu' importante del programma non e' una
+percentuale ma `CROLLO_MB`: il pannello compare mentre il crollo sta avvenendo, in tempo
+per fermarlo. I numeri, con i grafici e i colpevoli con nome e cognome, stanno in
+[`docs/perche-esiste.md`](docs/perche-esiste.md).
 
 ## Cosa fa
 
@@ -14,16 +34,26 @@ Nel tray compare un quadratino con la percentuale di RAM usata: verde sotto l'80
 cento, arancione dall'80, rosso dal 90 oppure quando restano meno di 600 MB liberi.
 Passando il mouse sopra si leggono i giga liberi e i tre processi piu' grossi.
 
-Il pannello di allarme si apre da solo, in basso a destra e sopra tutte le finestre,
-quando la RAM supera il 95 per cento, oppure restano meno di 600 MB liberi, oppure
-qualcosa si e' preso piu' di 800 MB in pochi secondi. Elenca i dodici processi piu'
-grossi raggruppati per nome, con quanti processi sono e quanti MB occupano. Si
-seleziona una riga e si preme "Chiudi questo": prova prima la chiusura educata e dopo
-tre secondi forza. I componenti di Windows sono grigi e protetti.
+Il pannello di allarme si apre da solo, in basso a destra e sopra tutte le finestre, in
+tre casi:
 
-Il pannello non ruba il fuoco della tastiera, si richiude da solo quando si risale
-sopra 1,5 GB liberi, e ha un pulsante per stare zitto mezz'ora. Ogni allarme viene
-annotato in `%USERPROFILE%\Downloads\claude_ram_allarmi.csv`.
+| Condizione | Costante |
+|---|---|
+| RAM oltre il 95 per cento | `SOGLIA_ALLARME` |
+| meno di 600 MB liberi | `LIBERI_CRITICI_MB` |
+| oltre 800 MB spariti in pochi secondi | `CROLLO_MB` |
+
+Elenca i dodici processi piu' grossi **raggruppati per nome** — Brave gira con oltre
+venti processi, contarli separatamente non direbbe niente — con megabyte, gigabyte,
+quota percentuale sulla RAM installata e numero di processi. Si seleziona una riga e si
+preme "Chiudi questo": prova prima la chiusura educata con `CloseMainWindow()` e solo
+dopo tre secondi forza. I componenti di Windows sono grigi e protetti, non si chiudono.
+
+Il pannello **non ruba il fuoco della tastiera**: se stai scrivendo continui a scrivere.
+Aperto dall'allarme si richiude da solo quando si risale sopra 1,5 GB liberi; aperto a
+mano col doppio clic sull'icona resta aperto finche' non lo chiudi tu. C'e' un pulsante
+per farlo stare zitto mezz'ora. Ogni allarme viene annotato in
+`%USERPROFILE%\Downloads\claude_ram_allarmi.csv`.
 
 ## Compilare
 
@@ -31,14 +61,20 @@ annotato in `%USERPROFILE%\Downloads\claude_ram_allarmi.csv`.
     .\build.ps1 -Avvia     # compila e lancia
 
 Non serve nessun SDK, nessun NuGet, nessun Visual Studio: si usa `csc.exe` della .NET
-Framework 4, che c'e' gia' su qualunque Windows.
+Framework 4, che si trova in `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\` su
+qualunque Windows dal 2010 in avanti. L'eseguibile che ne esce e' un file solo da 20 KB.
+
+Questo e' un vincolo di progetto, non una pigrizia: il programma deve poter essere
+ricompilato su una macchina qualsiasi, anche in mezzo a un guaio, senza prima installare
+mezzo gigabyte di strumenti.
 
 ## Installare e disinstallare
 
     .\install.ps1     # compila, mette in avvio automatico (HKCU Run), lancia
     .\uninstall.ps1   # ferma e toglie dall avvio automatico
 
-Niente UAC, gira tutto nel contesto utente.
+Niente UAC, niente servizi, niente scritture fuori dal profilo utente: gira tutto nel
+contesto dell'utente che lo lancia.
 
 ## Struttura
 
@@ -49,6 +85,10 @@ Niente UAC, gira tutto nel contesto utente.
     docs/perche-esiste.md     i dati misurati da cui vengono le soglie
     CLAUDE.md                 istruzioni per lavorarci con Claude Code
 
+## Requisiti
+
+Windows 10 o 11, .NET Framework 4 (c'e' gia'). Niente altro.
+
 ## Licenza
 
-Uso personale.
+MIT, vedi [LICENSE](LICENSE).
