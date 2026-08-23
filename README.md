@@ -43,9 +43,10 @@ tre casi:
 | meno di 600 MB liberi | `LIBERI_CRITICI_MB` |
 | oltre 800 MB spariti in pochi secondi | `CROLLO_MB` |
 
-Elenca i dodici processi piu' grossi **raggruppati per nome** — Brave gira con oltre
-venti processi, contarli separatamente non direbbe niente — con megabyte, gigabyte,
-quota percentuale sulla RAM installata e numero di processi. Si seleziona una riga e si
+Elenca i dodici processi piu' grossi, tutti visibili insieme senza scorrere, e
+**raggruppati per nome** - Brave gira con oltre venti processi, contarli separatamente
+non direbbe niente - con megabyte, gigabyte, quota percentuale sulla RAM installata e
+numero di processi. Si seleziona una riga e si
 preme "Chiudi questo": prova prima la chiusura educata con `CloseMainWindow()` e solo
 dopo tre secondi forza. I componenti di Windows sono grigi e protetti, non si chiudono.
 
@@ -73,8 +74,21 @@ mezzo gigabyte di strumenti.
     .\install.ps1     # compila, mette in avvio automatico (HKCU Run), lancia
     .\uninstall.ps1   # ferma e toglie dall avvio automatico
 
+**Parte da solo a ogni accensione del PC.** A ogni avvio il programma riscrive la
+propria voce in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` con il percorso da
+cui sta girando in quel momento: se sposti la cartella continua a partire lo stesso,
+senza dover reinstallare niente. Chi non lo vuole lo toglie con `uninstall.ps1` o dalla
+voce di menu "Avvia con Windows".
+
 Niente UAC, niente servizi, niente scritture fuori dal profilo utente: gira tutto nel
 contesto dell'utente che lo lancia.
+
+## Quanto pesa
+
+Da 4 a 6 MB di memoria. WinForms ne pretende una trentina all'avvio, cosi' il programma
+restituisce a Windows le pagine che non sta usando appena finita la partenza, poi ogni
+cinque minuti e ogni volta che il pannello si chiude. Sarebbe stato ridicolo il
+contrario: un monitor di RAM che si tiene trenta MB per dirti che la RAM sta finendo.
 
 ## Struttura
 

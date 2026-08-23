@@ -41,6 +41,19 @@ namespace ClaudeRamTray {
       return s;
     }
 
+    [DllImport("kernel32.dll")]
+    static extern bool SetProcessWorkingSetSize(IntPtr h, IntPtr min, IntPtr max);
+    [DllImport("kernel32.dll")]
+    static extern IntPtr GetCurrentProcess();
+
+    // Restituisce al sistema le pagine che il programma non sta piu' usando.
+    // Un monitor di memoria che si tiene decine di MB di roba morta e' una
+    // barzelletta: con -1,-1 Windows svuota il working set e le pagine che
+    // servono davvero rientrano da sole al primo accesso.
+    public static void Sgombera() {
+      try { SetProcessWorkingSetSize(GetCurrentProcess(), (IntPtr)(-1), (IntPtr)(-1)); } catch {}
+    }
+
     public static readonly HashSet<string> Protetti = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
       "System","Idle","Registry","smss","csrss","wininit","winlogon","services","lsass",
       "fontdrvhost","dwm","Memory Compression","MemCompression","svchost","LsaIso",
@@ -83,7 +96,7 @@ namespace ClaudeRamTray {
       StartPosition = FormStartPosition.Manual;
       ShowInTaskbar = false;
       TopMost = true;
-      ClientSize = new Size(440, 380);
+      ClientSize = new Size(440, 424);
       BackColor = Color.FromArgb(28, 28, 30);
       ForeColor = Color.White;
       Font = new Font("Segoe UI", 9f);
@@ -112,21 +125,21 @@ namespace ClaudeRamTray {
       lista.Columns.Add("% RAM", 52, HorizontalAlignment.Right);
       lista.Columns.Add("Processi", 68, HorizontalAlignment.Right);
       lista.Location = new Point(10, 84);
-      lista.Size = new Size(420, 240);
+      lista.Size = new Size(420, 284);   // dodici righe piu' l'intestazione, senza barra di scorrimento
       lista.DoubleClick += delegate { Termina(); };
       Controls.Add(lista);
 
-      bTermina = Bottone("Chiudi questo", 10, 334, 120);
+      bTermina = Bottone("Chiudi questo", 10, 378, 120);
       bTermina.BackColor = Color.FromArgb(150, 35, 35);
       bTermina.Click += delegate { Termina(); };
 
-      bTask = Bottone("Gestione attivita", 136, 334, 120);
+      bTask = Bottone("Gestione attivita", 136, 378, 120);
       bTask.Click += delegate { try { Process.Start("taskmgr.exe"); } catch {} };
 
-      bRinvia = Bottone("Zitto 30 min", 262, 334, 100);
+      bRinvia = Bottone("Zitto 30 min", 262, 378, 100);
       bRinvia.Click += delegate { RinviaFino = DateTime.Now.AddMinutes(30); Hide(); };
 
-      bChiudi = Bottone("Chiudi", 368, 334, 62);
+      bChiudi = Bottone("Chiudi", 368, 378, 62);
       bChiudi.Click += delegate { Hide(); };
 
       refresh = new Timer();
@@ -134,7 +147,9 @@ namespace ClaudeRamTray {
       refresh.Tick += delegate { Ridisegna(); };
 
       // Chiuso in qualunque modo, la prossima apertura riparte da zero.
-      VisibleChanged += delegate { if (!Visible) { manuale = false; refresh.Stop(); } };
+      VisibleChanged += delegate {
+        if (!Visible) { refresh.Stop(); Mem.Sgombera(); }
+      };
 
       killRitardato = new Timer();
       killRitardato.Interval = 3000;
@@ -169,7 +184,6 @@ namespace ClaudeRamTray {
     public void Apri(int pct, long liberiMB, long crollo) { Apri(pct, liberiMB, crollo, false); }
 
     public void Apri(int pct, long liberiMB, long crollo, bool aMano) {
-      manuale = aMano;
       Text = aMano ? "Memoria - stato attuale" : "RAM quasi esaurita";
       Rectangle wa = Screen.PrimaryScreen.WorkingArea;
       Location = new Point(wa.Right - Width - 16, wa.Bottom - Height - 16);
@@ -177,6 +191,12 @@ namespace ClaudeRamTray {
       if (!Visible) Show();
       TopMost = true;
       BringToFront();
+      // Il modo si assegna DOPO Show(): creando l'handle della finestra
+      // WinForms fa scattare VisibleChanged, e assegnandolo prima il flag
+      // veniva azzerato li' dentro. Risultato: il pannello aperto a mano si
+      // richiudeva lo stesso al primo tick, che e' il difetto che si voleva
+      // togliere. Non spostare questa riga piu' in alto.
+      manuale = aMano;
       refresh.Start();
     }
 
@@ -322,6 +342,7 @@ namespace ClaudeRamTray {
       csvAllarmi = Path.Combine(down, "claude_ram_allarmi.csv");
 
       pannello = new Pannello();
+      AllineaAvvio();
 
       ContextMenuStrip m = new ContextMenuStrip();
       m.Items.Add("Mostra pannello adesso", null, delegate { ApriPannello(true); });
@@ -352,6 +373,23 @@ namespace ClaudeRamTray {
     void ApriPannello(bool forzato) {
       MEMORYSTATUSEX s = Mem.Stato();
       pannello.Apri((int)s.dwMemoryLoad, (long)(s.ullAvailPhys / 1048576L), 0, forzato);
+    }
+
+    // A ogni avvio il programma si riscrive nell'avvio automatico di Windows,
+    // e ci mette il percorso da cui sta girando adesso. Serve perche' il
+    // registro puntava all'eseguibile vecchio dopo che la cartella era stata
+    // spostata, e il monitor semplicemente non ripartiva piu' al riavvio del
+    // PC. Chi non lo vuole lo toglie dal menu: la voce resta.
+    void AllineaAvvio() {
+      try {
+        string mio = "\"" + Application.ExecutablePath + "\"";
+        RegistryKey k = Registry.CurrentUser.OpenSubKey(RUNKEY, true);
+        if (k == null) return;
+        object v = k.GetValue("ClaudeRamTray");
+        string attuale = (v == null) ? null : v.ToString();
+        if (attuale != mio) k.SetValue("ClaudeRamTray", mio);
+        k.Close();
+      } catch {}
     }
 
     bool InAvvio() {
@@ -385,6 +423,9 @@ namespace ClaudeRamTray {
       liberiPrec = liberiMB;
 
       contatore++;
+      // Ogni cinque minuti, e sempre subito dopo l'avvio, il programma
+      // restituisce a Windows la memoria che ha smesso di usare.
+      if (contatore == 3 || contatore % 150 == 0) Mem.Sgombera();
       if (contatore % 10 == 1) {
         StringBuilder sb = new StringBuilder();
         foreach (Voce v in Mem.Classifica(3)) sb.AppendLine(v.Nome + "  " + v.MB + " MB");

@@ -38,9 +38,13 @@ Deve continuare a **non richiedere l'elevazione**. Se una funzionalita' richiede
 l'amministratore, si scarta o si rende opzionale.
 
 Il consumo del programma stesso deve restare basso: e' un monitor di memoria, sarebbe
-ridicolo se pesasse. Misurato al 23/08/2026 sta sui **33-35 MB** di working set, il
-grosso dei quali e' il costo fisso di WinForms. Non deve crescere oltre; se cresce,
-il primo sospetto e' un handle o un `Bitmap` non liberato nel disegno dell'icona.
+ridicolo se pesasse. Appena avviato WinForms si porta dietro una trentina di MB, quindi
+`Mem.Sgombera()` chiama `SetProcessWorkingSetSize(-1,-1)` al terzo tick e poi ogni
+cinque minuti, e ogni volta che il pannello si chiude: il working set scende a **4-6
+MB** e le pagine che servono davvero rientrano da sole. Non e' un trucco per far bella
+figura col Gestione attivita', e' esattamente quello che il programma chiede di fare
+agli altri. Se un giorno si vedesse rallentare l'apertura del pannello, diradare lo
+sgombero, non toglierlo.
 
 ## Architettura
 
@@ -124,7 +128,28 @@ Il tooltip e la lista mostrano la somma per **nome** di processo, non per singol
 processo, perche' Brave gira con oltre venti processi e la classifica per singolo
 processo non direbbe niente di utile.
 
-Una `Mutex` chiamata `ClaudeRamTray_singola` impedisce due istanze contemporanee.
+Una `Mutex` chiamata `ClaudeRamTray_singola` impedisce due istanze contemporanee. Chi
+volesse lanciare una copia di prova accanto a quella vera deve cambiare quel nome,
+altrimenti la seconda esce subito senza dire niente.
+
+`AllineaAvvio()` gira a ogni avvio e riscrive la chiave `HKCU\...\Run` con il percorso
+dell'eseguibile che sta girando in quel momento. Serve perche' spostando la cartella il
+registro restava a puntare al vecchio percorso e il monitor non ripartiva piu' al
+riavvio del PC, senza che niente lo segnalasse. La voce di menu "Avvia con Windows"
+continua a togliere e rimettere la chiave, ma al lancio successivo il programma si
+riscrive: e' voluto, la richiesta era che parta sempre.
+
+**Il flag `manuale` va assegnato DOPO `Show()`.** Assegnandolo prima veniva azzerato
+dentro `VisibleChanged`, che WinForms fa scattare durante la creazione dell'handle, e
+il pannello aperto a mano si richiudeva lo stesso dopo due secondi. Il difetto era
+intermittente perche' dipende da quando l'handle viene creato: sembrava corretto e non
+lo era. C'e' un commento sul posto, non spostare quella riga.
+
+La geometria del pannello e' a coordinate fisse: `ClientSize` 440x424, la `ListView`
+alta 284, i bottoni a y=378. Le dodici righe piu' l'intestazione ci stanno per pochi
+pixel. **Se si cambia il numero di righe mostrate o si aggiunge una riga
+all'intestazione bisogna rifare i conti**, altrimenti ricompare la barra di
+scorrimento, che e' proprio la cosa che si era tolta.
 
 ## Come si prova una modifica
 
