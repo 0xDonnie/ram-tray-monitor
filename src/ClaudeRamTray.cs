@@ -190,19 +190,56 @@ namespace ClaudeRamTray {
       Riempi();
     }
 
+    static Color Colore(Voce v) {
+      if (Mem.Protetti.Contains(v.Nome)) return Color.FromArgb(130, 130, 136);
+      if (v.MB >= 1500) return Color.FromArgb(255, 120, 120);
+      if (v.MB >= 700)  return Color.FromArgb(255, 190, 110);
+      return Color.White;
+    }
+
     void Riempi() {
-      string sel = (lista.SelectedItems.Count > 0) ? lista.SelectedItems[0].Text : null;
+      List<Voce> voci = Mem.Classifica(12);
+
+      // Svuotare e ricostruire la lista a ogni giro riportava lo scorrimento
+      // in cima dopo un secondo. Se i nomi sono gli stessi e nello stesso
+      // ordine si aggiornano i valori sul posto e la barra non si muove.
+      bool stessoOrdine = (lista.Items.Count == voci.Count);
+      if (stessoOrdine) {
+        for (int i = 0; i < voci.Count; i++) {
+          if (lista.Items[i].Text != voci[i].Nome) { stessoOrdine = false; break; }
+        }
+      }
+
       lista.BeginUpdate();
-      lista.Items.Clear();
-      foreach (Voce v in Mem.Classifica(12)) {
-        ListViewItem it = new ListViewItem(v.Nome);
-        it.SubItems.Add(v.MB.ToString());
-        it.SubItems.Add(v.Quanti.ToString());
-        if (Mem.Protetti.Contains(v.Nome)) it.ForeColor = Color.FromArgb(130, 130, 136);
-        else if (v.MB >= 1500) it.ForeColor = Color.FromArgb(255, 120, 120);
-        else if (v.MB >= 700)  it.ForeColor = Color.FromArgb(255, 190, 110);
-        lista.Items.Add(it);
-        if (sel != null && v.Nome == sel) it.Selected = true;
+      if (stessoOrdine) {
+        for (int i = 0; i < voci.Count; i++) {
+          ListViewItem it = lista.Items[i];
+          string mb = voci[i].MB.ToString();
+          string q  = voci[i].Quanti.ToString();
+          if (it.SubItems[1].Text != mb) it.SubItems[1].Text = mb;
+          if (it.SubItems[2].Text != q)  it.SubItems[2].Text = q;
+          it.ForeColor = Colore(voci[i]);
+        }
+      } else {
+        string sel = (lista.SelectedItems.Count > 0) ? lista.SelectedItems[0].Text : null;
+        string cima = null;
+        try { if (lista.TopItem != null) cima = lista.TopItem.Text; } catch {}
+        lista.Items.Clear();
+        foreach (Voce v in voci) {
+          ListViewItem it = new ListViewItem(v.Nome);
+          it.SubItems.Add(v.MB.ToString());
+          it.SubItems.Add(v.Quanti.ToString());
+          it.ForeColor = Colore(v);
+          lista.Items.Add(it);
+          if (sel != null && v.Nome == sel) it.Selected = true;
+        }
+        // Anche quando la classifica cambia, si prova a rimettere lo
+        // scorrimento sulla riga che stava in cima.
+        if (cima != null) {
+          foreach (ListViewItem it in lista.Items) {
+            if (it.Text == cima) { try { lista.TopItem = it; } catch {} break; }
+          }
+        }
       }
       lista.EndUpdate();
     }
