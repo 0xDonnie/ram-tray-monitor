@@ -43,12 +43,45 @@ tre casi:
 | meno di 600 MB liberi | `LIBERI_CRITICI_MB` |
 | oltre 800 MB spariti in pochi secondi | `CROLLO_MB` |
 
-Elenca i dodici processi piu' grossi, tutti visibili insieme senza scorrere, e
-**raggruppati per nome** - Brave gira con oltre venti processi, contarli separatamente
-non direbbe niente - con megabyte, gigabyte, quota percentuale sulla RAM installata e
-numero di processi. Si seleziona una riga e si
-preme "Chiudi questo": prova prima la chiusura educata con `CloseMainWindow()` e solo
-dopo tre secondi forza. I componenti di Windows sono grigi e protetti, non si chiudono.
+Elenca i **trenta** processi piu' grossi **raggruppati per nome** - Brave gira con
+oltre venti processi, contarli separatamente non direbbe niente - con megabyte,
+gigabyte, quota percentuale sulla RAM installata e numero di processi. I primi tredici
+si vedono subito, gli altri scorrendo, e la barra di scorrimento resta dove l'hai
+lasciata anche mentre i numeri si aggiornano. L'ultima riga, grigia, riassume tutto
+quello che non ci sta: su una macchina normale i primi dodici nomi sono gia' l'ottanta
+per cento della memoria occupata, e senza quella riga sembra che il conto non torni.
+
+Si seleziona una riga e si preme "Chiudi questo": prova prima la chiusura educata con
+`CloseMainWindow()` e solo dopo tre secondi forza. I componenti di Windows sono grigi e
+protetti, non si chiudono.
+
+## Il pannello Claude di Office
+
+Il componente aggiuntivo Claude per Excel, Word e PowerPoint gira dentro WebView2 e
+**resta in memoria anche quando lo chiudi**: sei processi per circa 470 MB misurati.
+Due bottoni in fondo al pannello lo gestiscono.
+
+**Libera Claude Office** chiude quei processi e mostra quanti MB ha recuperato. Chiude
+solo quelli: `msedgewebview2.exe` lo usano anche Widgets, Copilot, Outlook, Teams e
+Discord, quindi il filtro non guarda il nome del processo ma la sua riga di comando, e
+tiene solo chi lavora nel profilo dei componenti aggiuntivi di Office
+(`...\Office\16.0\Wef\webview2`). Se non c'e' niente da liberare il bottone e' spento e
+dice "Claude Office: 0 MB", senza finestrelle.
+
+**Riapri Claude in Excel** porta Excel (o Word, o PowerPoint) in primo piano e manda
+Ctrl+Alt+C, la scorciatoia del componente aggiuntivo. E' un tentativo, non una garanzia:
+se Windows rifiuta di cambiare finestra il bottone lo dice e non insiste.
+
+I due comandi sono separati apposta. La memoria si libera anche con Office chiuso, e il
+pannello si riapre anche senza aver liberato niente; un comando unico avrebbe anche
+nascosto quale delle due meta' e' fallita. Ci sono anche nel menu dell'icona nel tray.
+
+Quello che il programma **non** fa e' il blocco IFEO, cioe' scrivere
+`Debugger=systray.exe` sotto `Image File Execution Options\msedgewebview2.exe`. Quel
+trucco gira in rete come soluzione, impedisce del tutto a WebView2 di partire e rompe il
+componente aggiuntivo con "Non e' possibile avviare questo componente aggiuntivo"
+(`CO_E_SERVER_EXEC_FAILURE`). Qui si chiudono dei processi, e basta: il registro non si
+tocca.
 
 Il pannello **non ruba il fuoco della tastiera**: se stai scrivendo continui a scrivere.
 Aperto dall'allarme si richiude da solo quando si risale sopra 1,5 GB liberi; aperto a

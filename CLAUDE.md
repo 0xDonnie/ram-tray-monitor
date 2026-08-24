@@ -20,7 +20,13 @@ Il punto di questo progetto e' che si ricompila su qualsiasi macchina senza inst
 niente. Se serve una libreria esterna, quasi sempre la risposta giusta e' non usarla.
 
 Riferimenti passati al compilatore: System.dll, System.Drawing.dll,
-System.Windows.Forms.dll, System.Core.dll. Nient'altro.
+System.Windows.Forms.dll, System.Core.dll, System.Management.dll. Nient'altro.
+System.Management serve solo a leggere la riga di comando dei processi con WMI, che e'
+l'unico modo decente per distinguere i WebView2 di Office dagli altri.
+
+`build.ps1` cancella l'eseguibile prima di compilare. Non e' pulizia: senza, una
+compilazione fallita lasciava in `bin\` la copia precedente e lo script annunciava "OK"
+mentre stavi ancora provando la versione di ieri. E' successo.
 
 ## Vincoli duri, da rispettare sempre
 
@@ -51,7 +57,7 @@ sgombero, non toglierlo.
 
 ## Architettura
 
-Quattro classi dentro il namespace `ClaudeRamTray`, piu' `Voce`, che e' solo il record
+Cinque classi dentro il namespace `ClaudeRamTray`, piu' `Voce`, che e' solo il record
 di una riga della classifica: nome, megabyte, quanti processi con quel nome.
 
 `Mem` e' la classe statica di utilita'. Legge la memoria con `GlobalMemoryStatusEx` via
@@ -61,6 +67,23 @@ enumera i processi con `Process.GetProcesses()`, li raggruppa per nome sommando 
 millisecondi con trecento processi, quindi **non va chiamata a ogni tick**: nel tray
 viene chiamata una volta ogni dieci tick, cioe' ogni venti secondi. `Mem.Protetti` e'
 l'insieme dei nomi di processo che il pannello si rifiuta di chiudere.
+
+`Office` e' la classe statica che gestisce il componente aggiuntivo Claude di Excel,
+Word e PowerPoint. `Cerca()` interroga WMI su `Win32_Process` e tiene solo i
+`msedgewebview2.exe` la cui riga di comando corrisponde a
+`Office\1[0-9]\.0\Wef\webview2`, cioe' il profilo WebView2 dei componenti aggiuntivi.
+**Il filtro sul nome del processo non basta e non va usato**: lo stesso eseguibile lo
+usano Widgets, Copilot, Outlook, Teams e Discord, e chiuderli tutti rompe roba che non
+c'entra niente. Il controllo e' verificato su nove righe di comando reali. La query WMI
+costa qualche centinaio di millisecondi, quindi `Cerca()` prima guarda con
+`GetProcessesByName` se esista almeno un WebView2 e nel caso normale esce subito; non va
+messa dentro un tick.
+
+**Non usare mai il blocco IFEO**, cioe' `Debugger=systray.exe` sotto
+`HKLM\...\Image File Execution Options\msedgewebview2.exe`. Gira in rete come rimedio,
+impedisce del tutto a WebView2 di partire e il 24/08/2026 ha rotto il componente
+aggiuntivo con "Non e' possibile avviare questo componente aggiuntivo",
+`CO_E_SERVER_EXEC_FAILURE`. Qui si chiudono processi e non si tocca il registro.
 
 `TrayApp` estende `ApplicationContext` ed e' il cuore. Ha un `NotifyIcon`, un
 `System.Windows.Forms.Timer` da due secondi, e in `Aggiorna()` fa tutto: legge la
@@ -81,14 +104,23 @@ mano deve restare aperto, altrimenti sparisce due secondi dopo, che e' esattamen
 difetto che aveva alla prima versione. Il campo si azzera da solo su `VisibleChanged`,
 cosi' non serve ricordarsi di resettarlo in ogni punto che chiama `Hide()`.
 
-`Riempi()` ha due rami. Se i nomi dei processi sono gli stessi e nello stesso ordine
-dell'ultimo giro, **aggiorna i testi delle colonne sul posto**; solo se la classifica
-cambia svuota e ricostruisce la `ListView`, e in quel caso prova a rimettere lo
-scorrimento sulla riga che stava in cima. Ricostruire sempre, come faceva la prima
-versione, riportava la barra di scorrimento in cima ogni due secondi mentre l'utente
-stava leggendo. I valori numerici delle colonne li produce il solo metodo
-`Numeri(Voce, totaleMB)`, usato da entrambi i rami: se si aggiunge una colonna si
-tocca solo quello e l'elenco di `Columns.Add`.
+`Riempi()` **non ricostruisce quasi mai la lista**: riscrive il contenuto delle righe
+che ci sono gia', nome compreso, e svuota la `ListView` solo quando cambia il numero di
+righe. Questo perche' ricostruirla riporta la barra di scorrimento in cima, difetto
+segnalato due volte dall'utente: la prima quando si ricostruiva a ogni tick, la seconda
+quando bastava un cambio d'ordine, che con trenta processi succede in continuazione
+perche' gli ultimi si scambiano di posto per un megabyte. Provato dall'esterno con
+`LVM_GETTOPINDEX`: scorrendo fino alla riga 17, dopo quattro giri del timer era ancora
+la 17.
+
+La contropartita e' che la riga numero N puo' cambiare processo sotto il cursore, quindi
+**la selezione segue il nome e non la posizione**: dopo l'aggiornamento, se la riga
+selezionata non e' piu' quella di prima si cerca il nome altrove e lo si riseleziona, e
+se e' sparito non resta selezionato niente. Senza quel pezzo "Chiudi questo" potrebbe
+chiudere il processo che nel frattempo e' scivolato sotto la selezione.
+
+I valori numerici delle colonne li produce il solo metodo `Numeri(Voce, totaleMB)`: se
+si aggiunge una colonna si tocca solo quello e l'elenco di `Columns.Add`.
 
 ## Le soglie
 
@@ -148,11 +180,18 @@ il pannello aperto a mano si richiudeva lo stesso dopo due secondi. Il difetto e
 intermittente perche' dipende da quando l'handle viene creato: sembrava corretto e non
 lo era. C'e' un commento sul posto, non spostare quella riga.
 
-La geometria del pannello e' a coordinate fisse: `ClientSize` 440x424, la `ListView`
-alta 284, i bottoni a y=378. Le dodici righe piu' l'intestazione ci stanno per pochi
-pixel. **Se si cambia il numero di righe mostrate o si aggiunge una riga
-all'intestazione bisogna rifare i conti**, altrimenti ricompare la barra di
-scorrimento, che e' proprio la cosa che si era tolta.
+La geometria del pannello e' a coordinate fisse: `ClientSize` 440x490, la `ListView`
+alta 306, la prima riga di bottoni a y=400 e la seconda a y=440. **Se si aggiunge un
+bottone o una riga all'intestazione bisogna rifare i conti a mano**, non c'e' nessun
+layout automatico.
+
+La lista contiene `RIGHE` = 30 processi piu' una riga di riepilogo, e ne mostra tredici
+per volta: le altre si raggiungono scorrendo. Lo scorrimento adesso e' stabile, quindi
+la barra non e' piu' un problema come nella prima versione. La riga di riepilogo la
+produce `Mem.ClassificaConCoda` e si riconosce da `Mem.ERiepilogo`, cioe' dal nome che
+comincia con "(altri ": `Termina()` si rifiuta di chiuderla e `Riempi()` toglie la
+selezione quando ricostruisce, altrimenti la ListView lascia selezionata proprio quella
+riga e invita a premere "Chiudi questo" su una cosa che non e' un processo.
 
 ## Come si prova una modifica
 

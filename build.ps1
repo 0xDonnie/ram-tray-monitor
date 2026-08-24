@@ -21,7 +21,13 @@ Get-Process ClaudeRamTray -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 400
 
 $argomenti = @('/nologo','/target:winexe','/optimize+',"/out:$exe",
-               '/r:System.dll','/r:System.Drawing.dll','/r:System.Windows.Forms.dll','/r:System.Core.dll',$src)
+               '/r:System.dll','/r:System.Drawing.dll','/r:System.Windows.Forms.dll','/r:System.Core.dll',
+               '/r:System.Management.dll',$src)
+# L'eseguibile vecchio va tolto PRIMA di compilare: altrimenti, se la
+# compilazione fallisce, il Test-Path qui sotto trova la copia precedente e
+# lo script annuncia "OK" mentre in bin\ c'e' ancora la versione di ieri.
+Remove-Item $exe -Force -ErrorAction SilentlyContinue
+
 $out = & $csc $argomenti 2>&1
 if (-not (Test-Path $exe)) {
     Write-Host 'COMPILAZIONE FALLITA' -ForegroundColor Red
