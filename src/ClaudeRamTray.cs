@@ -140,38 +140,80 @@ namespace ClaudeRamTray {
       public int Quanti { get { return Pid.Count; } }
     }
 
-    // La lettura della riga di comando passa da WMI e costa qualche centinaio
-    // di millisecondi, quindi prima si guarda col metodo economico se esista
-    // almeno un msedgewebview2: quasi sempre non ce n'e' nessuno e si esce
-    // subito. Non va chiamata a ogni tick.
-    public static Stato Cerca() {
-      Stato st = new Stato();
-      Process[] veloce;
-      try { veloce = Process.GetProcessesByName(ESE); } catch { return st; }
-      try {
-        if (veloce.Length == 0) return st;
-      } finally {
-        foreach (Process p in veloce) { try { p.Dispose(); } catch {} }
-      }
+    // La classificazione dei PID resta in cache, perche' la query WMI costa
+    // qualche centinaio di millisecondi e lo stato acceso/spento va riletto
+    // mentre il pannello e' aperto. L'elenco dei PID vivi si prende con
+    // GetProcessesByName, che e' immediato; WMI si interroga solo quando
+    // compare un PID mai visto.
+    static readonly Dictionary<int, bool> noti = new Dictionary<int, bool>();
 
+    static List<int> PidVivi() {
+      List<int> vivi = new List<int>();
+      Process[] tutti;
+      try { tutti = Process.GetProcessesByName(ESE); } catch { return vivi; }
+      foreach (Process p in tutti) {
+        try { vivi.Add(p.Id); } catch {}
+        finally { try { p.Dispose(); } catch {} }
+      }
+      return vivi;
+    }
+
+    static void Classifica(List<int> vivi) {
+      Dictionary<int, bool> trovati = new Dictionary<int, bool>();
       try {
         using (ManagementObjectSearcher q = new ManagementObjectSearcher(
                  "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = '" + ESE + ".exe'")) {
           foreach (ManagementObject o in q.Get()) {
             using (o) {
-              object riga = o["CommandLine"];
-              if (riga == null || !PROFILO.IsMatch(riga.ToString())) continue;
               int pid;
               try { pid = Convert.ToInt32(o["ProcessId"]); } catch { continue; }
-              st.Pid.Add(pid);
-              try {
-                using (Process p = Process.GetProcessById(pid)) st.MB += p.WorkingSet64 / 1048576L;
-              } catch {}
+              object riga = o["CommandLine"];
+              trovati[pid] = (riga != null) && PROFILO.IsMatch(riga.ToString());
             }
           }
         }
-      } catch {}
+      } catch { return; }
+      // I PID morti si buttano: Windows li riusa, e un PID riciclato preso per
+      // buono dalla cache farebbe chiudere il processo sbagliato.
+      noti.Clear();
+      foreach (KeyValuePair<int, bool> kv in trovati) {
+        if (vivi.Contains(kv.Key)) noti[kv.Key] = kv.Value;
+      }
+    }
+
+    // preciso = true forza la lettura da WMI. Va usato SEMPRE prima di
+    // chiudere qualcosa: la cache serve solo a disegnare lo stato.
+    public static Stato Cerca(bool preciso) {
+      Stato st = new Stato();
+      List<int> vivi = PidVivi();
+      if (vivi.Count == 0) { noti.Clear(); return st; }
+
+      bool mancano = false;
+      foreach (int pid in vivi) { if (!noti.ContainsKey(pid)) { mancano = true; break; } }
+      if (preciso || mancano) Classifica(vivi);
+
+      foreach (int pid in vivi) {
+        bool suo;
+        if (!noti.TryGetValue(pid, out suo) || !suo) continue;
+        st.Pid.Add(pid);
+        try {
+          using (Process p = Process.GetProcessById(pid)) st.MB += p.WorkingSet64 / 1048576L;
+        } catch {}
+      }
       return st;
+    }
+
+    // C'e' un Office aperto? Serve a sapere se ha senso offrire di riaprire il
+    // pannello: senza Excel, Word o PowerPoint non c'e' niente da accendere.
+    public static bool OfficeAperto() {
+      string[] nomi = { "EXCEL", "WINWORD", "POWERPNT" };
+      foreach (string n in nomi) {
+        Process[] tutti;
+        try { tutti = Process.GetProcessesByName(n); } catch { continue; }
+        try { if (tutti.Length > 0) return true; }
+        finally { foreach (Process p in tutti) { try { p.Dispose(); } catch {} } }
+      }
+      return false;
     }
 
     public static int Libera(Stato st) {
@@ -227,7 +269,10 @@ namespace ClaudeRamTray {
     Label testa;
     ListView lista;
     Button bTermina, bTask, bRinvia, bChiudi;
-    Button bLibera, bRiapri;
+    Label statoOffice;
+    Button bOffice;
+    int riapriFase = 0;
+    int giriOffice = 0;
     Timer riapriRitardato;
     Office.Stato office;
     Timer refresh;
@@ -297,32 +342,40 @@ namespace ClaudeRamTray {
       bChiudi = Bottone("Chiudi", 368, 400, 62);
       bChiudi.Click += delegate { Hide(); };
 
-      // Seconda riga: i comandi del pannello Claude di Office. Sono due
-      // bottoni distinti e non un unico "riavvia" perche' le due cose servono
-      // in momenti diversi: la memoria si libera anche con Office chiuso, e il
-      // pannello si riapre anche senza aver liberato niente. Un comando solo
-      // avrebbe anche nascosto quale meta' e' fallita, e la seconda meta'
-      // dipende da SetForegroundWindow, che Windows puo' sempre rifiutare.
-      bLibera = Bottone("Libera Claude Office", 10, 440, 205);
-      bLibera.Click += delegate { ComandoLibera(); };
+      // Seconda riga: il pannello Claude di Office. A sinistra lo STATO, a
+      // destra l'azione. Un solo bottone che faccia da interruttore sarebbe
+      // ambiguo, perche' non si capisce se l'etichetta dice com'e' adesso o
+      // cosa succede premendolo: l'utente ha segnalato proprio quello, "non so
+      // se e' attivo o no". Cosi' lo stato si legge senza premere niente.
+      statoOffice = new Label();
+      statoOffice.Location = new Point(10, 440);
+      statoOffice.Size = new Size(250, 32);
+      statoOffice.TextAlign = ContentAlignment.MiddleLeft;
+      statoOffice.BackColor = Color.FromArgb(38, 38, 42);
+      statoOffice.Padding = new Padding(10, 0, 0, 0);
+      Controls.Add(statoOffice);
 
-      bRiapri = Bottone("Riapri Claude in Excel", 225, 440, 205);
-      bRiapri.Click += delegate { ComandoRiapri(); };
+      bOffice = Bottone("Accendi", 270, 440, 160);
+      bOffice.Click += delegate {
+        if (office != null && office.Quanti > 0) ComandoLibera();
+        else ComandoRiapri();
+      };
 
       // Sui bottoni ci sta poco testo, e da solo non basta a far capire cosa
       // fanno: la spiegazione lunga sta nel suggerimento del mouse.
       ToolTip sugg = new ToolTip();
       sugg.AutoPopDelay = 15000;
       sugg.InitialDelay = 400;
-      sugg.SetToolTip(bLibera,
-        "Chiude i processi del pannello Claude dentro Excel, Word e PowerPoint," + Environment.NewLine +
-        "che restano in memoria anche quando il pannello e' chiuso." + Environment.NewLine +
+      sugg.SetToolTip(statoOffice,
+        "Il pannello Claude dentro Excel, Word e PowerPoint gira in WebView2 e" + Environment.NewLine +
+        "resta in memoria anche quando lo chiudi. Qui vedi se e' acceso e" + Environment.NewLine +
+        "quanta RAM sta tenendo in questo momento.");
+      sugg.SetToolTip(bOffice,
+        "Acceso: chiude i processi del pannello Claude di Office e libera la RAM." + Environment.NewLine +
         "Non tocca Widgets, Copilot, Outlook, Teams e Discord: usano lo stesso" + Environment.NewLine +
-        "motore ma un profilo diverso.");
-      sugg.SetToolTip(bRiapri,
-        "Porta Excel (o Word, o PowerPoint) in primo piano e manda Ctrl+Alt+C," + Environment.NewLine +
-        "la scorciatoia che riapre il pannello Claude. Da usare dopo aver" + Environment.NewLine +
-        "liberato la memoria, per farlo ripartire pulito.");
+        "motore ma un profilo diverso." + Environment.NewLine +
+        "Spento: porta Office in primo piano e manda Ctrl+Alt+C, la scorciatoia" + Environment.NewLine +
+        "che riapre il pannello.");
 
       refresh = new Timer();
       refresh.Interval = 2000;
@@ -340,8 +393,17 @@ namespace ClaudeRamTray {
       riapriRitardato = new Timer();
       riapriRitardato.Interval = 400;
       riapriRitardato.Tick += delegate {
-        riapriRitardato.Stop();
-        Office.ScorciatoiaClaude();
+        if (riapriFase == 0) {
+          // La finestra di Office ha avuto il tempo di prendere il fuoco.
+          Office.ScorciatoiaClaude();
+          riapriFase = 1;
+          riapriRitardato.Interval = 3000;   // WebView2 ci mette un attimo a nascere
+        } else {
+          riapriRitardato.Stop();
+          riapriRitardato.Interval = 400;
+          riapriFase = 0;
+          AggiornaOffice(true);
+        }
       };
 
       killRitardato = new Timer();
@@ -381,7 +443,7 @@ namespace ClaudeRamTray {
       Rectangle wa = Screen.PrimaryScreen.WorkingArea;
       Location = new Point(wa.Right - Width - 16, wa.Bottom - Height - 16);
       Aggiorna(pct, liberiMB, crollo);
-      AggiornaOffice();
+      AggiornaOffice(false);
       if (!Visible) Show();
       TopMost = true;
       BringToFront();
@@ -414,37 +476,48 @@ namespace ClaudeRamTray {
       return Color.White;
     }
 
-    // Costa qualche centinaio di millisecondi perche' passa da WMI, quindi si
-    // chiama quando il pannello si apre e dopo un comando, non a ogni tick.
-    void AggiornaOffice() {
-      office = Office.Cerca();
-      if (office.Quanti == 0) {
-        bLibera.Enabled = false;
-        bLibera.Text = "Claude Office: 0 MB";
+    // Con preciso = false lo stato si legge dalla cache dei PID, che costa
+    // quanto un GetProcessesByName; con true si rilegge da WMI. Prima di
+    // chiudere qualcosa si usa sempre true.
+    void AggiornaOffice(bool preciso) {
+      office = Office.Cerca(preciso);
+      if (office.Quanti > 0) {
+        statoOffice.Text = "Claude Office ACCESO   " + office.MB + " MB";
+        statoOffice.ForeColor = Color.FromArgb(255, 165, 90);
+        bOffice.Text = "Spegni e libera";
+        bOffice.Enabled = true;
+      } else if (Office.OfficeAperto()) {
+        statoOffice.Text = "Claude Office spento";
+        statoOffice.ForeColor = Color.FromArgb(120, 210, 130);
+        bOffice.Text = "Accendi in Office";
+        bOffice.Enabled = true;
       } else {
-        bLibera.Enabled = true;
-        bLibera.Text = "Libera Claude Office: " + office.MB + " MB";
+        statoOffice.Text = "Claude Office spento";
+        statoOffice.ForeColor = Color.FromArgb(120, 210, 130);
+        bOffice.Text = "Office non aperto";
+        bOffice.Enabled = false;
       }
-      bRiapri.Text = "Riapri Claude in Excel";
     }
 
     public void ComandoLibera() {
-      AggiornaOffice();
+      AggiornaOffice(true);
       if (office.Quanti == 0) return;
       long prima = office.MB;
-      int quanti = office.Quanti;
       Office.Libera(office);
       Mem.Sgombera();
-      AggiornaOffice();
-      // Il risultato si legge sul bottone: niente finestrelle di conferma,
-      // il pannello compare quando la macchina sta gia' soffrendo.
-      bLibera.Text = "Liberati " + prima + " MB";
+      AggiornaOffice(true);
+      // Il risultato si legge nella riga di stato: niente finestrelle di
+      // conferma, il pannello compare quando la macchina sta gia' soffrendo.
+      statoOffice.Text = "Claude Office spento   -" + prima + " MB";
       if (Visible) Riempi();
     }
 
     public void ComandoRiapri() {
-      if (!Office.InPrimoPiano()) { bRiapri.Text = "Excel non e' aperto"; return; }
-      bRiapri.Text = "Riapri Claude in Excel";
+      if (!Office.InPrimoPiano()) {
+        statoOffice.Text = "Nessun Office da attivare";
+        statoOffice.ForeColor = Color.FromArgb(200, 200, 205);
+        return;
+      }
       riapriRitardato.Start();
     }
 
@@ -510,6 +583,10 @@ namespace ClaudeRamTray {
       MEMORYSTATUSEX s = Mem.Stato();
       long liberi = (long)(s.ullAvailPhys / 1048576L);
       Aggiorna((int)s.dwMemoryLoad, liberi, 0);
+      // Lo stato di Claude Office si rilegge ogni dieci secondi: dalla cache
+      // dei PID costa quanto contare i processi, quindi si puo' fare mentre il
+      // pannello e' aperto senza che si senta.
+      if (++giriOffice % 5 == 0) AggiornaOffice(false);
       // Il rientro automatico vale solo per il pannello aperto dall'allarme.
       // Se l'ha aperto l'utente resta li' finche' non lo chiude lui.
       if (liberi > 1500 && !manuale) { refresh.Stop(); Hide(); }

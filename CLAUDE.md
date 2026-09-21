@@ -69,15 +69,21 @@ viene chiamata una volta ogni dieci tick, cioe' ogni venti secondi. `Mem.Protett
 l'insieme dei nomi di processo che il pannello si rifiuta di chiudere.
 
 `Office` e' la classe statica che gestisce il componente aggiuntivo Claude di Excel,
-Word e PowerPoint. `Cerca()` interroga WMI su `Win32_Process` e tiene solo i
+Word e PowerPoint. `Cerca(preciso)` interroga WMI su `Win32_Process` e tiene solo i
 `msedgewebview2.exe` la cui riga di comando corrisponde a
-`Office\1[0-9]\.0\Wef\webview2`, cioe' il profilo WebView2 dei componenti aggiuntivi.
+`Office\\1[0-9]\.0\\Wef\\webview2`, cioe' il profilo WebView2 dei componenti aggiuntivi.
 **Il filtro sul nome del processo non basta e non va usato**: lo stesso eseguibile lo
 usano Widgets, Copilot, Outlook, Teams e Discord, e chiuderli tutti rompe roba che non
-c'entra niente. Il controllo e' verificato su nove righe di comando reali. La query WMI
-costa qualche centinaio di millisecondi, quindi `Cerca()` prima guarda con
-`GetProcessesByName` se esista almeno un WebView2 e nel caso normale esce subito; non va
-messa dentro un tick.
+c'entra niente. Il controllo e' verificato su nove righe di comando reali.
+
+La query WMI costa qualche centinaio di millisecondi, e lo stato acceso/spento va
+riletto mentre il pannello e' aperto, quindi la classificazione dei PID resta in cache:
+l'elenco dei PID vivi si prende con `GetProcessesByName`, che e' immediato, e WMI si
+interroga solo quando compare un PID mai visto. **`Cerca(true)` forza la rilettura da
+WMI e va usato sempre prima di chiudere qualcosa**: Windows ricicla i PID, e un PID
+riciclato preso per buono dalla cache farebbe chiudere il processo sbagliato, che qui
+significa ammazzare il WebView2 di Teams o di Outlook. La cache serve a disegnare, non
+a decidere chi muore.
 
 **Non usare mai il blocco IFEO**, cioe' `Debugger=systray.exe` sotto
 `HKLM\...\Image File Execution Options\msedgewebview2.exe`. Gira in rete come rimedio,
@@ -184,6 +190,13 @@ La geometria del pannello e' a coordinate fisse: `ClientSize` 440x490, la `ListV
 alta 306, la prima riga di bottoni a y=400 e la seconda a y=440. **Se si aggiunge un
 bottone o una riga all'intestazione bisogna rifare i conti a mano**, non c'e' nessun
 layout automatico.
+
+La seconda riga non e' fatta di due bottoni ma di una **etichetta di stato** a sinistra
+(x=10, larga 250) e di un bottone a destra (x=270, largo 160). Un interruttore unico
+sarebbe ambiguo - non si capisce se l'etichetta dica com'e' adesso o cosa succede
+premendola - e l'utente aveva segnalato esattamente quello: "non so se e' attivo o no".
+Cosi' lo stato si legge senza premere niente: arancione se Claude Office sta tenendo
+memoria, verde se e' spento.
 
 La lista contiene `RIGHE` = 30 processi piu' una riga di riepilogo, e ne mostra tredici
 per volta: le altre si raggiungono scorrendo. Lo scorrimento adesso e' stabile, quindi

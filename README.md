@@ -59,22 +59,27 @@ protetti, non si chiudono.
 
 Il componente aggiuntivo Claude per Excel, Word e PowerPoint gira dentro WebView2 e
 **resta in memoria anche quando lo chiudi**: sei processi per circa 470 MB misurati.
-Due bottoni in fondo al pannello lo gestiscono.
 
-**Libera Claude Office** chiude quei processi e mostra quanti MB ha recuperato. Chiude
-solo quelli: `msedgewebview2.exe` lo usano anche Widgets, Copilot, Outlook, Teams e
-Discord, quindi il filtro non guarda il nome del processo ma la sua riga di comando, e
-tiene solo chi lavora nel profilo dei componenti aggiuntivi di Office
-(`...\Office\16.0\Wef\webview2`). Se non c'e' niente da liberare il bottone e' spento e
-dice "Claude Office: 0 MB", senza finestrelle.
+In fondo al pannello c'e' una riga che dice **se e' acceso**, senza dover premere
+niente: "Claude Office ACCESO 470 MB" in arancione quando sta tenendo memoria, "Claude
+Office spento" in verde quando non c'e'. Accanto, il comando che porta nell'altro stato.
 
-**Riapri Claude in Excel** porta Excel (o Word, o PowerPoint) in primo piano e manda
-Ctrl+Alt+C, la scorciatoia del componente aggiuntivo. E' un tentativo, non una garanzia:
-se Windows rifiuta di cambiare finestra il bottone lo dice e non insiste.
+**Spegni e libera** chiude quei processi e la riga di stato mostra quanti MB ha
+recuperato. Chiude solo quelli: `msedgewebview2.exe` lo usano anche Widgets, Copilot,
+Outlook, Teams e Discord, quindi il filtro non guarda il nome del processo ma la sua
+riga di comando, e tiene solo chi lavora nel profilo dei componenti aggiuntivi di Office
+(`...\Office\16.0\Wef\webview2`).
 
-I due comandi sono separati apposta. La memoria si libera anche con Office chiuso, e il
-pannello si riapre anche senza aver liberato niente; un comando unico avrebbe anche
-nascosto quale delle due meta' e' fallita. Ci sono anche nel menu dell'icona nel tray.
+**Accendi in Office** porta Excel (o Word, o PowerPoint) in primo piano e manda
+Ctrl+Alt+C, la scorciatoia del componente aggiuntivo, poi ricontrolla lo stato. Se non
+c'e' nessun Office aperto il comando e' spento e lo dice, senza finestrelle.
+
+Lo stato si aggiorna da solo ogni dieci secondi mentre il pannello e' aperto. Costa
+quanto contare i processi, non quanto una query WMI: la classificazione dei PID resta in
+cache e WMI si interroga solo quando compare un processo mai visto, oppure - sempre -
+un attimo prima di chiudere qualcosa, perche' sui PID riciclati non si scherza.
+
+I due comandi sono anche nel menu dell'icona nel tray.
 
 Quello che il programma **non** fa e' il blocco IFEO, cioe' scrivere
 `Debugger=systray.exe` sotto `Image File Execution Options\msedgewebview2.exe`. Quel
