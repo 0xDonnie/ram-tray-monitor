@@ -403,6 +403,15 @@ namespace ClaudeRamTray {
           riapriRitardato.Interval = 400;
           riapriFase = 0;
           AggiornaOffice(true);
+          // Se dopo tre secondi non e' nato nessun WebView2, la scorciatoia
+          // non ha attecchito: puo' darsi che il pannello fosse gia' aperto,
+          // che la combinazione non sia registrata, o che il componente
+          // aggiuntivo sia rotto. Meglio dirlo che lasciare il pannello muto
+          // come se avesse funzionato.
+          if (office.Quanti == 0) {
+            statoOffice.Text = "Nessuna risposta: apri Claude dal nastro";
+            statoOffice.ForeColor = Color.FromArgb(230, 200, 120);
+          }
         }
       };
 
